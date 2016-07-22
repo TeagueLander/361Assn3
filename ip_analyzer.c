@@ -60,6 +60,12 @@ int main(int argc, char **argv) {
 		exit(1);
 	}
 	
+	//Set these to -1 so we know they haven't been set yet
+	for (int i = 0; i < MAX_NUM_FRAGMENTS; i++) {
+		fragment_first_id[i] = -1;
+		fragment_udp_port[i] = -1;
+	}
+	
 	//Open Pcap files and parse each packet
 	pcap = OpenTraceFile(filename);
 	
@@ -88,10 +94,27 @@ int main(int argc, char **argv) {
 			printf("\t%s\n",protocol_types[protocols_found[i]]);
 		}
 		printf("\n");
+		//PRINT DATAGRAM FRAGMENT STATS
 		for (int i = 0; i < fragmented_datagram_count; i++) {
+			//if (fragments_found_count[i] > 0) {
 			printf("The number of fragments created from the original datagram D%d is: %d\n",i+1,fragments_found_count[i]);
 			printf("The offset of the last fragment is: %d\n", last_fragment_offset[i]);
+			printf("\n");
+			//}
 		}
+		if (fragmented_datagram_count == 0) {
+			printf("No fragmented packets\n\n");
+		}
+		//PRINT RTT STATS
+		char src_port_str[INET_ADDRSTRLEN];
+		inet_ntop(AF_INET, &ip_src,src_port_str,INET_ADDRSTRLEN);
+		for (int i = 0; i < ip_intr_dst_count; i++) {
+			inet_ntop(AF_INET, &ip_intr_dst[i],str,INET_ADDRSTRLEN);
+			printf("The avg RTT between %s and %s is: 00 ms, the s.d. is: 0 ms\n",src_port_str,str);
+		}
+		inet_ntop(AF_INET, &ip_ult_dst,str,INET_ADDRSTRLEN);
+		printf("The avg RTT between %s and %s is: 00 ms, the s.d. is: 0 ms\n",src_port_str,str);
+		printf("\n");	
 	}else {
 		printf("No valid traceroute\n");
 	}
@@ -192,10 +215,10 @@ void too_short(struct timeval ts, const char *truncated_hdr) {
  */
 int ParseIP(const unsigned char *packet, struct ip *ip) {
 
-	int id = ntohs(ip->ip_id); //& 0x0F;
-	
+	u_short id = ntohs(ip->ip_id); //& 0x0F;	
 	unsigned int IP_header_len = ip->ip_hl * 4;
 	int mf = (ip->ip_off & 0x0020) >> 5;
+	int cur_frag_num = (int)(ip->ip_ttl)-1;
 	
 	packet += IP_header_len;
 	
@@ -204,8 +227,8 @@ int ParseIP(const unsigned char *packet, struct ip *ip) {
 		struct icmphdr* icmp = (struct icmphdr*) packet;	
 		add_protocol(ip->ip_p);
 		
-		u_short src_port;
 		//Skip over everything in the icmp message until we get the udp source port
+		u_short src_port;
 		packet += sizeof(struct icmphdr); //This will be the packet return from the icmp data
 		struct ip* msg_ip = (struct ip*) packet;
 		if (msg_ip->ip_p == UDP_P) {
@@ -213,11 +236,8 @@ int ParseIP(const unsigned char *packet, struct ip *ip) {
 			packet += msg_header_len;
 			struct udphdr* udp = (struct udphdr*) packet;
 			//what we want is u_short src_port = udp->uh_sport; (FOR MATCHING THINGS)
-			src_port = udp->uh_sport;
-			
+			src_port = udp->uh_sport;	
 		}
-		
-		//printf("type %d ttl %d first_id %d\n ",(int)(icmp->type),(int)(ip->ip_ttl),(int)first_id);
 		
 		//Packet timed out
 		if (icmp->type == 11) {
@@ -247,6 +267,11 @@ int ParseIP(const unsigned char *packet, struct ip *ip) {
 			
 		}else if (icmp->type == 8) {
 			//Record time packet was sent
+			if (fragment_first_id[cur_frag_num] == (u_short)(-1)) {
+				fragment_first_id[cur_frag_num] = id;
+				fragment_udp_port[cur_frag_num] = (ip->ip_src.s_addr);
+				fragmented_datagram_count++;
+			}
 			
 		}else if (icmp->type == 0 || icmp->type == 3) {
 			//add_intr_dst(ip->ip_src);
@@ -259,24 +284,37 @@ int ParseIP(const unsigned char *packet, struct ip *ip) {
 		struct udphdr* udp = (struct udphdr*) packet;
 		add_protocol(ip->ip_p);
 
+		//printf("cur_frag_num %hu fragment_first_id[cfn] %hu\n",cur_frag_num,fragment_first_id[cur_frag_num]);
+
 		if (ip->ip_ttl == 1 && first_id == (u_short)(-1)) {  //First Packet
 			//Set source and ult ip addresses
 			ip_src = ip->ip_src;
 			ip_ult_dst = ip->ip_dst;
 			//Set id
-			first_id = ntohs(ip->ip_id);
+			first_id = ntohs(ip->ip_id); //REMOVE
+			fragment_first_id[0] = ntohs(ip->ip_id);
+			fragment_udp_port[0] = udp->uh_sport;
 			//Set port
 			udp_port = udp->uh_sport;
+			fragmented_datagram_count++;
 			if (mf == 1) { //FRAGMENTS HERE
-				fragments_found_count[fragmented_datagram_count]++;
-				fragmented_datagram_count++;
+				fragments_found_count[fragmented_datagram_count]++;				
 			}
-		}else if (first_id == id){
-			fragments_found_count[0]++;
-			//Get offset value
-			u_short offset = ntohs(ip->ip_off) & 0x1FFF;
+		}else if (fragment_first_id[cur_frag_num] == (u_short)(-1)) { //First of new fragment
+			fragment_first_id[cur_frag_num] = id;
+			fragment_udp_port[cur_frag_num] = udp->uh_sport;
+			fragmented_datagram_count++;
+			if (mf == 1) { //FRAGMENTS HERE
+				fragments_found_count[fragmented_datagram_count]++;				
+			}
+			
+		}else if ( id == (fragment_first_id[cur_frag_num]) ){
+			fragments_found_count[cur_frag_num]++;
+			
 			if (mf == 0) {
-				last_fragment_offset[0] = (int)offset * 8;
+				//Get offset value
+				u_short offset = ntohs(ip->ip_off) & 0x1FFF;
+				last_fragment_offset[cur_frag_num] = (int)offset * 8;
 			}
 			
 		}
