@@ -14,6 +14,7 @@
 #include <netinet/if_ether.h>
 #include <netinet/ip.h>
 #include <netinet/ip_icmp.h>
+#include <netinet/udp.h>
 #include "ip_analyzer.h"
 
 #define MAX_NUM_HOPS 80
@@ -23,6 +24,9 @@ struct in_addr ip_ult_dst;
 struct in_addr ip_intr_dst[MAX_NUM_HOPS];
 int ip_intr_dst_count = 0;
 int src_dst_found = 0;  //The number of valid packets
+
+u_short first_id = -1;
+u_short udp_port = 0;
 
 u_char protocols_found[MAX_NUM_PROTOCOLS];
 int protocols_found_count = 0;
@@ -55,7 +59,9 @@ int main(int argc, char **argv) {
 	pcap = OpenTraceFile(filename);
 	
 	while ((packet = pcap_next(pcap, &header)) != NULL){
-		ParsePacket(packet, header.ts, header.caplen);
+		if (ParsePacket(packet, header.ts, header.caplen) == 1) {
+			break;
+		}
 	}
 	
 	//Print stuff
@@ -106,7 +112,7 @@ int ParsePacket(const unsigned char *packet, struct timeval ts, unsigned int cap
 	
 	if (capture_len < sizeof(struct ether_header)) { //Check if we have enough bytes to form an ethernet header
 		too_short(ts, "Ethernet Header");
-		return;
+		return 0;
 	}
 	
 	//Now skip over ethernet header and check if we might have an ip header
@@ -114,7 +120,7 @@ int ParsePacket(const unsigned char *packet, struct timeval ts, unsigned int cap
 	capture_len -= sizeof(struct ether_header);
 	if (capture_len < sizeof(struct ip)) {
 		too_short(ts, "IP Header");
-		return;
+		return 0;
 	}
 	
 	ip = (struct ip*) packet;
@@ -122,10 +128,10 @@ int ParsePacket(const unsigned char *packet, struct timeval ts, unsigned int cap
 	
 	if (capture_len < IP_header_length) { /* didn't capture the full IP header including options */
 		too_short(ts, "IP header with options");
-		return;
+		return 0;
 	}
 	
-	ParseIP(ip);
+	return ParseIP(packet, ip);
 	
 }
 
@@ -177,36 +183,128 @@ void too_short(struct timeval ts, const char *truncated_hdr) {
  * 
  *
  */
-void ParseIP(struct ip *ip) {
+int ParseIP(const unsigned char *packet, struct ip *ip) {
 
-	//Check if the protocol is already listed
-	if (ip->ip_p == ICMP_P || ip->ip_p == UDP_P) {
-		int found = 0;
-		for (int i = 0; i < protocols_found_count; i++)	{
-			if (ip->ip_p == protocols_found[i]) {
-				found = 1;
-				break;
-			}
+	int id = ntohs(ip->ip_id); //& 0x0F;
+	
+	unsigned int IP_header_len = ip->ip_hl * 4;
+	int mf = (ip->ip_off & 0x0020) >> 5;
+	
+	packet += IP_header_len;
+	
+	//Packet is ICMP
+	if (ip->ip_p == ICMP_P) {
+		struct icmphdr* icmp = (struct icmphdr*) packet;	
+		add_protocol(ip->ip_p);
+		
+		u_short src_port;
+		//Skip over everything in the icmp message until we get the udp source port
+		packet += sizeof(struct icmphdr); //This will be the packet return from the icmp data
+		struct ip* msg_ip = (struct ip*) packet;
+		if (msg_ip->ip_p == UDP_P) {
+			unsigned int msg_header_len = msg_ip->ip_hl * 4;
+			packet += msg_header_len;
+			struct udphdr* udp = (struct udphdr*) packet;
+			//what we want is u_short src_port = udp->uh_sport; (FOR MATCHING THINGS)
+			src_port = udp->uh_sport;
+			
 		}
-		if (found == 0) { //Not listed, add to list
-			protocols_found[protocols_found_count] = ip->ip_p;
-			protocols_found_count += 1;
+		
+		//printf("type %d ttl %d first_id %d\n ",(int)(icmp->type),(int)(ip->ip_ttl),(int)first_id);
+		
+		//Packet timed out
+		if (icmp->type == 11) {
+			 //MORE THAN MAX HOPE ERROR HERE
+			 add_intr_dst(ip->ip_src);
+			 
+		}else if (icmp->type == 8 && ip->ip_ttl == (char)1 && first_id == (u_short)(-1)) { //FIRST ID?
+			//Set source and ult ip addresses
+			ip_src = ip->ip_src;
+			ip_ult_dst = ip->ip_dst;
+			//Record time packet was sent
+			//Set ID of first packet
+			first_id = ntohs(ip->ip_id);			
+			if (mf == 1) { //FRAGMENTS HERE
+				fragments_found_count++;
+			}
+			
+		}else if (first_id == id) { //PACKET IS A FRAGMENT // || udp_port == src_port
+			fragments_found_count++;
+			//Get offset value
+			u_short offset = ntohs(ip->ip_off) & 0x1FFF;
+			if (mf == 0) {
+				last_fragment_offset = (int)offset * 8;
+			}
+			//Record time packet was sent
+			
+		}else if (icmp->type == 8) {
+			//Record time packet was sent
+			
+		}else if (icmp->type == 0 || icmp->type == 3) {
+			//add_intr_dst(ip->ip_src);
+			return 1;
+			
+		}
+		
+	}else if (ip->ip_p == UDP_P) {
+	
+		struct udphdr* udp = (struct udphdr*) packet;
+		add_protocol(ip->ip_p);
+
+		if (ip->ip_ttl == 1 && first_id == (u_short)(-1)) {  //First Packet
+			printf("FIRST UDP\n");
+			//Set source and ult ip addresses
+			ip_src = ip->ip_src;
+			ip_ult_dst = ip->ip_dst;
+			//Set id
+			first_id = ntohs(ip->ip_id);
+			//Set port
+			udp_port = udp->uh_sport;
+			if (mf == 1) { //FRAGMENTS HERE
+				fragments_found_count++;
+			}
+		}else if (first_id == id){
+			printf("SECOND UDP\n");
+			fragments_found_count++;
+			//Get offset value
+			u_short offset = ntohs(ip->ip_off) & 0x1FFF;
+			if (mf == 0) {
+				last_fragment_offset = (int)offset * 8;
+			}
 		}
 	}
 	
-	if (src_dst_found == 0) {
-		if (ip->ip_p == ICMP_P || ip->ip_p == UDP_P) {
-			ip_src = ip->ip_src;
-			ip_ult_dst = ip->ip_dst;	
-			
-			src_dst_found = 1;	
+	src_dst_found = 1; //CHANGE THIS
+	return 0;
+}
+
+void add_intr_dst(struct in_addr ip) {
+	int found = 0;
+	for (int i = 0; i < ip_intr_dst_count; i++) {
+		if (ip_intr_dst[i].s_addr == ip.s_addr) {
+			found = 1;
+			break;
 		}
-	}else {
-		
+	}
+	if (found == 0) {
+		ip_intr_dst[ip_intr_dst_count] = ip;
+		ip_intr_dst_count += 1;	
 	}
 }
 
-
+void add_protocol(u_char protocol) {
+	int found = 0;
+	for (int i = 0; i < protocols_found_count; i++)	{
+		if (protocol == protocols_found[i]) {
+			found = 1;
+			break;
+		}
+	}
+	if (found == 0) { //Not listed, add to list
+		protocols_found[protocols_found_count] = protocol;
+		protocols_found_count += 1;
+	}
+}
 
 
 /* --------- compute_rtt() routine ------------
