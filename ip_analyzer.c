@@ -18,6 +18,8 @@
 #include "ip_analyzer.h"
 
 #define MAX_NUM_HOPS 80
+#define MAX_NUM_PROTOCOLS 20
+#define MAX_NUM_FRAGMENTS 20
 
 struct in_addr ip_src;
 struct in_addr ip_ult_dst;
@@ -31,8 +33,11 @@ u_short udp_port = 0;
 u_char protocols_found[MAX_NUM_PROTOCOLS];
 int protocols_found_count = 0;
 
-int fragments_found_count = 0;
-int last_fragment_offset = 0;
+u_short fragment_first_id[MAX_NUM_FRAGMENTS];
+u_short fragment_udp_port[MAX_NUM_FRAGMENTS];
+int fragments_found_count[MAX_NUM_FRAGMENTS];
+int last_fragment_offset[MAX_NUM_FRAGMENTS];
+int fragmented_datagram_count = 0;
 
 /* --------- main() routine ------------
  * three main task will be excuted:
@@ -83,8 +88,10 @@ int main(int argc, char **argv) {
 			printf("\t%s\n",protocol_types[protocols_found[i]]);
 		}
 		printf("\n");
-		printf("The number of fragments created from the original datagram is: %d\n",fragments_found_count);
-		printf("The offset of the last fragment is: %d\n", last_fragment_offset);
+		for (int i = 0; i < fragmented_datagram_count; i++) {
+			printf("The number of fragments created from the original datagram D%d is: %d\n",i+1,fragments_found_count[i]);
+			printf("The offset of the last fragment is: %d\n", last_fragment_offset[i]);
+		}
 	}else {
 		printf("No valid traceroute\n");
 	}
@@ -225,15 +232,16 @@ int ParseIP(const unsigned char *packet, struct ip *ip) {
 			//Set ID of first packet
 			first_id = ntohs(ip->ip_id);			
 			if (mf == 1) { //FRAGMENTS HERE
-				fragments_found_count++;
+				fragments_found_count[fragmented_datagram_count]++;
+				fragmented_datagram_count++;
 			}
 			
-		}else if (first_id == id) { //PACKET IS A FRAGMENT // || udp_port == src_port
-			fragments_found_count++;
+		}else if (first_id == id) { //PACKET IS A FRAGMENT // || udp_port == src_port  
+			fragments_found_count[0]++;
 			//Get offset value
 			u_short offset = ntohs(ip->ip_off) & 0x1FFF;
 			if (mf == 0) {
-				last_fragment_offset = (int)offset * 8;
+				last_fragment_offset[0] = (int)offset * 8;
 			}
 			//Record time packet was sent
 			
@@ -252,7 +260,6 @@ int ParseIP(const unsigned char *packet, struct ip *ip) {
 		add_protocol(ip->ip_p);
 
 		if (ip->ip_ttl == 1 && first_id == (u_short)(-1)) {  //First Packet
-			printf("FIRST UDP\n");
 			//Set source and ult ip addresses
 			ip_src = ip->ip_src;
 			ip_ult_dst = ip->ip_dst;
@@ -261,21 +268,40 @@ int ParseIP(const unsigned char *packet, struct ip *ip) {
 			//Set port
 			udp_port = udp->uh_sport;
 			if (mf == 1) { //FRAGMENTS HERE
-				fragments_found_count++;
+				fragments_found_count[fragmented_datagram_count]++;
+				fragmented_datagram_count++;
 			}
 		}else if (first_id == id){
-			printf("SECOND UDP\n");
-			fragments_found_count++;
+			fragments_found_count[0]++;
 			//Get offset value
 			u_short offset = ntohs(ip->ip_off) & 0x1FFF;
 			if (mf == 0) {
-				last_fragment_offset = (int)offset * 8;
+				last_fragment_offset[0] = (int)offset * 8;
 			}
+			
 		}
 	}
 	
 	src_dst_found = 1; //CHANGE THIS
 	return 0;
+}
+
+int find_fragment_num_by_id(u_short id) {
+	for (int i = 0; i < fragmented_datagram_count; i++) {
+		if (fragment_first_id[i] == id) {
+			return i;
+		}
+	}
+	return -1;
+}
+
+int find_fragment_num_by_port(u_short port) {
+	for (int i = 0; i < fragmented_datagram_count; i++) {
+		if (fragment_udp_port[i] == port) {
+			return i;
+		}
+	}
+	return -1;
 }
 
 void add_intr_dst(struct in_addr ip) {
