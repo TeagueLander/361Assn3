@@ -1,0 +1,97 @@
+
+IP address of the source node: 192.168.100.17
+IP address of ultimate destination node: 8.8.8.8
+IP addresses of the intermediate destination nodes:
+	 router 1: 142.104.68.167
+	 router 2: 192.168.9.5
+	 router 3: 142.104.68.1
+	 router 4: 192.168.8.6
+	 router 5: 192.168.10.1
+	 router 6: 142.104.252.37
+	 router 7: 142.104.252.246
+	 router 8: 207.23.244.242
+	 router 9: 206.12.3.17
+	 router 10: 199.212.24.64
+	 router 11: 206.81.80.17
+	 router 12: 72.14.237.123
+	 router 13: 74.125.37.91
+	 router 14: 209.85.249.109
+
+The values in the procotol field of IP headers:
+	UDP
+	ICMP
+
+The number of fragments created from the original datagram D1 is: 0
+The offset of the last fragment is: 0
+
+The number of fragments created from the original datagram D2 is: 0
+The offset of the last fragment is: 0
+
+The number of fragments created from the original datagram D3 is: 0
+The offset of the last fragment is: 0
+
+The number of fragments created from the original datagram D4 is: 0
+The offset of the last fragment is: 0
+
+The number of fragments created from the original datagram D5 is: 0
+The offset of the last fragment is: 0
+
+The number of fragments created from the original datagram D6 is: 0
+The offset of the last fragment is: 0
+
+The number of fragments created from the original datagram D7 is: 0
+The offset of the last fragment is: 0
+
+The number of fragments created from the original datagram D8 is: 0
+The offset of the last fragment is: 0
+
+The number of fragments created from the original datagram D9 is: 0
+The offset of the last fragment is: 0
+
+The number of fragments created from the original datagram D10 is: 0
+The offset of the last fragment is: 0
+
+The number of fragments created from the original datagram D11 is: 0
+The offset of the last fragment is: 0
+
+The number of fragments created from the original datagram D12 is: 0
+The offset of the last fragment is: 0
+
+The number of fragments created from the original datagram D13 is: 0
+The offset of the last fragment is: 0
+
+The number of fragments created from the original datagram D14 is: 0
+The offset of the last fragment is: 0
+
+The number of fragments created from the original datagram D15 is: 0
+The offset of the last fragment is: 0
+
+The number of fragments created from the original datagram D16 is: 0
+The offset of the last fragment is: 0
+
+The number of fragments created from the original datagram D17 is: 0
+The offset of the last fragment is: 0
+
+The number of fragments created from the original datagram D18 is: 0
+The offset of the last fragment is: 0
+
+The number of fragments created from the original datagram D19 is: 0
+The offset of the last fragment is: 0
+
+The avg RTT between 192.168.100.17 and 142.104.68.167 is: 0.017077 s, the s.d. is: 0.005826 s
+The avg RTT between 192.168.100.17 and 192.168.9.5 is: 0.023899 s, the s.d. is: 0.008189 s
+The avg RTT between 192.168.100.17 and 142.104.68.1 is: 0.023175 s, the s.d. is: 0.007775 s
+The avg RTT between 192.168.100.17 and 192.168.8.6 is: 0.026567 s, the s.d. is: 0.009190 s
+The avg RTT between 192.168.100.17 and 192.168.10.1 is: 0.025317 s, the s.d. is: 0.008395 s
+The avg RTT between 192.168.100.17 and 142.104.252.37 is: 0.017461 s, the s.d. is: 0.009977 s
+The avg RTT between 192.168.100.17 and 142.104.252.246 is: 0.020144 s, the s.d. is: 0.006851 s
+The avg RTT between 192.168.100.17 and 207.23.244.242 is: 0.006961 s, the s.d. is: 0.006961 s
+The avg RTT between 192.168.100.17 and 206.12.3.17 is: 0.025192 s, the s.d. is: 0.008538 s
+The avg RTT between 192.168.100.17 and 199.212.24.64 is: 0.026367 s, the s.d. is: 0.008915 s
+The avg RTT between 192.168.100.17 and 206.81.80.17 is: 0.028835 s, the s.d. is: 0.009743 s
+The avg RTT between 192.168.100.17 and 72.14.237.123 is: 0.023037 s, the s.d. is: 0.008800 s
+The avg RTT between 192.168.100.17 and 74.125.37.91 is: 0.008709 s, the s.d. is: 0.008709 s
+The avg RTT between 192.168.100.17 and 209.85.249.109 is: 0.008824 s, the s.d. is: 0.008824 s
+The avg RTT between 192.168.100.17 and 8.8.8.8 is: 0.000000 s, the s.d. is: 0.000000 s
+
+

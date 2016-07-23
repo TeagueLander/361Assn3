@@ -4,8 +4,7 @@
 #define MAX_STR_LEN 80
 
 
-//IP PROTOCOLS
-#define MAX_NUM_PROTOCOLS 20
+//IP PROTOCOLS	
 #define ICMP_P 0x01
 #define TCP_P 0x06
 #define UDP_P 0x11
@@ -21,4 +20,4 @@ struct round_trip {
 int main(int argc, char **argv);
 pcap_t* OpenTraceFile(char *filename);
 int ParsePacket(const unsigned char *packet, struct timeval ts, unsigned int capture_len);
-
+const char *timestamp_string(struct timeval ts);

@@ -1,0 +1,95 @@
+
+IP address of the source node: 192.168.100.17
+IP address of ultimate destination node: 8.8.8.8
+IP addresses of the intermediate destination nodes:
+	 router 1: 142.104.68.167
+	 router 2: 142.104.68.1
+	 router 3: 192.168.9.5
+	 router 4: 192.168.10.1
+	 router 5: 192.168.8.6
+	 router 6: 142.104.252.37
+	 router 7: 142.104.252.246
+	 router 8: 207.23.244.242
+	 router 9: 206.12.3.17
+	 router 10: 199.212.24.64
+	 router 11: 206.81.80.17
+	 router 12: 74.125.37.91
+	 router 13: 72.14.237.123
+
+The values in the procotol field of IP headers:
+	UDP
+	ICMP
+
+The number of fragments created from the original datagram D1 is: 0
+The offset of the last fragment is: 0
+
+The number of fragments created from the original datagram D2 is: 0
+The offset of the last fragment is: 0
+
+The number of fragments created from the original datagram D3 is: 0
+The offset of the last fragment is: 0
+
+The number of fragments created from the original datagram D4 is: 0
+The offset of the last fragment is: 0
+
+The number of fragments created from the original datagram D5 is: 0
+The offset of the last fragment is: 0
+
+The number of fragments created from the original datagram D6 is: 0
+The offset of the last fragment is: 0
+
+The number of fragments created from the original datagram D7 is: 0
+The offset of the last fragment is: 0
+
+The number of fragments created from the original datagram D8 is: 0
+The offset of the last fragment is: 0
+
+The number of fragments created from the original datagram D9 is: 0
+The offset of the last fragment is: 0
+
+The number of fragments created from the original datagram D10 is: 0
+The offset of the last fragment is: 0
+
+The number of fragments created from the original datagram D11 is: 0
+The offset of the last fragment is: 0
+
+The number of fragments created from the original datagram D12 is: 0
+The offset of the last fragment is: 0
+
+The number of fragments created from the original datagram D13 is: 0
+The offset of the last fragment is: 0
+
+The number of fragments created from the original datagram D14 is: 0
+The offset of the last fragment is: 0
+
+The number of fragments created from the original datagram D15 is: 0
+The offset of the last fragment is: 0
+
+The number of fragments created from the original datagram D16 is: 0
+The offset of the last fragment is: 0
+
+The number of fragments created from the original datagram D17 is: 0
+The offset of the last fragment is: 0
+
+The number of fragments created from the original datagram D18 is: 0
+The offset of the last fragment is: 0
+
+The number of fragments created from the original datagram D19 is: 0
+The offset of the last fragment is: 0
+
+The avg RTT between 192.168.100.17 and 142.104.68.167 is: 0.017529 s, the s.d. is: 0.005976 s
+The avg RTT between 192.168.100.17 and 142.104.68.1 is: 0.023598 s, the s.d. is: 0.008081 s
+The avg RTT between 192.168.100.17 and 192.168.9.5 is: 0.024471 s, the s.d. is: 0.008329 s
+The avg RTT between 192.168.100.17 and 192.168.10.1 is: 0.025737 s, the s.d. is: 0.008705 s
+The avg RTT between 192.168.100.17 and 192.168.8.6 is: 0.026872 s, the s.d. is: 0.009086 s
+The avg RTT between 192.168.100.17 and 142.104.252.37 is: 0.018170 s, the s.d. is: 0.010249 s
+The avg RTT between 192.168.100.17 and 142.104.252.246 is: 0.021609 s, the s.d. is: 0.007337 s
+The avg RTT between 192.168.100.17 and 207.23.244.242 is: 0.022773 s, the s.d. is: 0.007719 s
+The avg RTT between 192.168.100.17 and 206.12.3.17 is: 0.027128 s, the s.d. is: 0.009180 s
+The avg RTT between 192.168.100.17 and 199.212.24.64 is: 0.028297 s, the s.d. is: 0.009557 s
+The avg RTT between 192.168.100.17 and 206.81.80.17 is: 0.030154 s, the s.d. is: 0.010176 s
+The avg RTT between 192.168.100.17 and 74.125.37.91 is: 0.020755 s, the s.d. is: 0.009275 s
+The avg RTT between 192.168.100.17 and 72.14.237.123 is: 0.000000 s, the s.d. is: 0.000000 s
+The avg RTT between 192.168.100.17 and 8.8.8.8 is: 0.009352 s, the s.d. is: 0.009352 s
+
+

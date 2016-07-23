@@ -16,6 +16,7 @@
 #include <netinet/ip_icmp.h>
 #include <netinet/udp.h>
 #include <sys/time.h>
+#include <math.h>
 #include "ip_analyzer.h"
 
 #define MAX_NUM_HOPS 80
@@ -30,8 +31,14 @@ int ip_intr_dst_count = 0;
 int src_dst_found = 0;  //The number of valid packets
 
 struct timeval outgoing_time[MAX_NUM_HOPS][MAX_NUM_PROBES];
-u_short outgoing_seq_num[MAX_NUM_HOPS][MAX_NUM_PROBES];
+u_short outgoing_seq_num[MAX_NUM_HOPS][MAX_NUM_PROBES]; //SEQ NUM can technically be a port
 int outgoing_time_count_per_hop[MAX_NUM_HOPS];
+
+struct timeval rtt_time[MAX_NUM_HOPS][MAX_NUM_PROBES];
+int rtt_count[MAX_NUM_HOPS];
+
+struct timeval rtt_avg_time[MAX_NUM_HOPS];
+struct timeval rtt_std_time[MAX_NUM_HOPS];
 
 u_short first_id = -1;
 u_short udp_port = 0;
@@ -40,7 +47,7 @@ u_char protocols_found[MAX_NUM_PROTOCOLS];
 int protocols_found_count = 0;
 
 u_short fragment_first_id[MAX_NUM_DATAGRAMS];
-u_short fragment_udp_port[MAX_NUM_DATAGRAMS];
+u_short fragment_udp_port[MAX_NUM_DATAGRAMS]; //REMOVE
 int fragments_found_count[MAX_NUM_DATAGRAMS];
 int last_fragment_offset[MAX_NUM_DATAGRAMS];
 int fragmented_datagram_count = 0;
@@ -113,22 +120,30 @@ int main(int argc, char **argv) {
 		if (fragmented_datagram_count == 0) {
 			printf("No fragmented packets\n\n");
 		}
+		
+		avg_rtt();
+		
 		//PRINT RTT STATS
 		char src_port_str[INET_ADDRSTRLEN];
 		inet_ntop(AF_INET, &ip_src,src_port_str,INET_ADDRSTRLEN);
-		for (int i = 0; i < ip_intr_dst_count; i++) {
+		int i = 0;
+		for (i = 0; i < ip_intr_dst_count; i++) {
 			inet_ntop(AF_INET, &ip_intr_dst[i],str,INET_ADDRSTRLEN);
-			printf("The avg RTT between %s and %s is: 00 ms, the s.d. is: 0 ms\n",src_port_str,str);
+			char* time = timestamp_string(rtt_avg_time[i]);
+			printf( "The avg RTT between %s and %s is: %s s, ",src_port_str,str,time);
+			time = timestamp_string(rtt_std_time[i]);
+			printf( "the s.d. is: %s s\n",time);
 		}
 		inet_ntop(AF_INET, &ip_ult_dst,str,INET_ADDRSTRLEN);
-		printf("The avg RTT between %s and %s is: 00 ms, the s.d. is: 0 ms\n",src_port_str,str);
+		char* time = timestamp_string(rtt_avg_time[i]);
+		printf("The avg RTT between %s and %s is: %s s, ",src_port_str,str,time);
+		time = timestamp_string(rtt_std_time[i]);
+		printf( "the s.d. is: %s s\n",time);
 		printf("\n");	
 	}else {
 		printf("No valid traceroute\n");
 	}
 	printf("\n");
-	
-	
 	
 	pcap_close(pcap);
 	return 0;
@@ -198,12 +213,13 @@ const char *timestamp_string(struct timeval ts) {
 }
 
 /* --------- timevaldiff() routine ------------
+
  * Returns the difference in seconds between starttime and finishtime
  *
  * Adapted from https://www.mpp.mpg.de/~huber/util/timevaldiff.c
  */
-float timevaldiff(struct timeval *starttime, struct timeval *finishtime) {
-	float msec;
+double timevaldiff(struct timeval *starttime, struct timeval *finishtime) {
+	double msec;
 	msec=(finishtime->tv_sec-starttime->tv_sec)*1000;
 	msec+=(finishtime->tv_usec-starttime->tv_usec)/1000;
 	return msec;
@@ -227,6 +243,10 @@ int ParseIP(const unsigned char *packet, struct ip *ip, struct timeval ts) {
 	unsigned int IP_header_len = ip->ip_hl * 4;
 	int mf = (ip->ip_off & 0x0020) >> 5;
 	int cur_frag_num = (int)(ip->ip_ttl)-1;
+	u_short src_port;
+	u_short icmp_seq_num;
+	int udp_res = 0; //Is this a response to a udp packet
+	//u_char msg_ttl;
 	
 	packet += IP_header_len;
 	
@@ -235,34 +255,46 @@ int ParseIP(const unsigned char *packet, struct ip *ip, struct timeval ts) {
 		struct icmphdr* icmp = (struct icmphdr*) packet;	
 		add_protocol(ip->ip_p);
 		
-		//Skip over everything in the icmp message until we get the udp source port
-		u_short src_port;
+		//Skip over everything in the icmp message until we get the udp source port or icmp seq
 		packet += sizeof(struct icmphdr); //This will be the packet return from the icmp data
 		struct ip* msg_ip = (struct ip*) packet;
-		unsigned int msg_header_len = msg_ip->ip_hl * 4;
+		unsigned int msg_header_len = (msg_ip->ip_hl) * 4;
+		//msg_ttl = msg_ip->ip_ttl;
 		packet += msg_header_len;
 		if (msg_ip->ip_p == UDP_P) {
+			udp_res = 1;
 			struct udphdr* msg_udp = (struct udphdr*) packet;
 			//what we want is u_short src_port = udp->uh_sport; (FOR MATCHING THINGS)
 			src_port = msg_udp->uh_sport;	
+			//printf("udp port %hu\n",src_port);
 			
-		}else if (msg_ip->ip_p == ICMP_P) {
+		}else if (msg_ip->ip_p == ICMP_P && (icmp->type == 11 || icmp->type == 0) ) {
 			struct icmphdr* msg_icmp = (struct icmphdr*) packet;
+			icmp_seq_num = msg_icmp->un.echo.sequence;
+			packet += sizeof(struct icmphdr);
+			msg_ip = (struct ip*) packet;
+			//printf("icmp seq num found %hu ttl %d\n",icmp_seq_num, (int)msg_ttl);
 		}
 		
 		//Packet timed out
 		if (icmp->type == 11) {
 			 //MORE THAN MAX HOPE ERROR HERE
 			 add_intr_dst(ip->ip_src);
+			 if (udp_res == 0) {
+				add_incoming_time(icmp_seq_num,ts);
+			 } else {
+			 	add_incoming_time_by_port(src_port,ts);
+			 }
 			 
 		}else if (icmp->type == 8 && ip->ip_ttl == (char)1 && first_id == (u_short)(-1)) { //NEW ID
 			//Set source and ult ip addresses
 			ip_src = ip->ip_src;
 			ip_ult_dst = ip->ip_dst;
 			//Record time packet was sent
-			add_outgoing_time(id,ts,ip->ip_ttl);
+			add_outgoing_time(icmp,ts,ip->ip_ttl);
 			//Set ID of first packet
-			first_id = ntohs(ip->ip_id);			
+			first_id = ntohs(ip->ip_id);	
+			fragment_first_id[cur_frag_num] = id;		
 			if (mf == 1) { //FRAGMENTS HERE
 				fragments_found_count[fragmented_datagram_count]++;
 				fragmented_datagram_count++;
@@ -280,13 +312,23 @@ int ParseIP(const unsigned char *packet, struct ip *ip, struct timeval ts) {
 		}else if (icmp->type == 8) {
 			//Record time packet was sent
 			if (fragment_first_id[cur_frag_num] == (u_short)(-1)) {
+				
 				fragment_first_id[cur_frag_num] = id;
-				fragment_udp_port[cur_frag_num] = (ip->ip_src.s_addr);
+				
+				//fragment_udp_port[cur_frag_num] = (ip->ip_src.s_addr);
 				fragmented_datagram_count++;
+
+				add_outgoing_time(icmp,ts,ip->ip_ttl);
+			}else {
+				add_outgoing_time(icmp,ts,ip->ip_ttl);
 			}
 			
 		}else if (icmp->type == 0 || icmp->type == 3) {
-			//add_intr_dst(ip->ip_src);
+			if (udp_res == 0) {
+				add_incoming_time(icmp_seq_num,ts);
+			 } else {
+			 	add_incoming_time_by_port(src_port,ts);
+			 }
 			return 1;
 			
 		}
@@ -298,14 +340,18 @@ int ParseIP(const unsigned char *packet, struct ip *ip, struct timeval ts) {
 
 		//printf("cur_frag_num %hu fragment_first_id[cfn] %hu\n",cur_frag_num,fragment_first_id[cur_frag_num]);
 
-		if (ip->ip_ttl == 1 && first_id == (u_short)(-1)) {  //First Packet
+		if (ip->ip_ttl == (char)1 && first_id == (u_short)(-1)) {  //First Packet
+			
 			//Set source and ult ip addresses
 			ip_src = ip->ip_src;
 			ip_ult_dst = ip->ip_dst;
 			//Set id
 			first_id = ntohs(ip->ip_id); //REMOVE
 			fragment_first_id[0] = ntohs(ip->ip_id);
-			fragment_udp_port[0] = udp->uh_sport;
+			//fragment_udp_port[0] = udp->uh_sport;
+			//outgoing_seq_num[ip->ip_ttl][outgoing_time_count_per_hop[ip->ip_ttl]] = (udp->uh_sport);
+			//outgoing_time_count_per_hop[ip->ip_ttl]++;
+			add_outgoing_time_by_port(udp->uh_sport,ts,ip->ip_ttl); //add_outgoing_time(icmp_seq_num,ts,ip->ip_ttl);
 			//Set port
 			udp_port = udp->uh_sport;
 			fragmented_datagram_count++;
@@ -314,8 +360,12 @@ int ParseIP(const unsigned char *packet, struct ip *ip, struct timeval ts) {
 			}
 		}else if (fragment_first_id[cur_frag_num] == (u_short)(-1)) { //First of new fragment
 			fragment_first_id[cur_frag_num] = id;
-			fragment_udp_port[cur_frag_num] = udp->uh_sport;
+			//fragment_udp_port[cur_frag_num] = udp->uh_sport;
+			//outgoing_seq_num[ip->ip_ttl][outgoing_time_count_per_hop[ip->ip_ttl]] = (udp->uh_sport);
+			//outgoing_time_count_per_hop[ip->ip_ttl]++;
+			add_outgoing_time_by_port(udp->uh_sport,ts,ip->ip_ttl);
 			fragmented_datagram_count++;
+			
 			if (mf == 1) { //FRAGMENTS HERE
 				fragments_found_count[fragmented_datagram_count]++;				
 			}
@@ -329,6 +379,8 @@ int ParseIP(const unsigned char *packet, struct ip *ip, struct timeval ts) {
 				last_fragment_offset[cur_frag_num] = (int)offset * 8;
 			}
 			
+		} else {
+			add_outgoing_time_by_port(udp->uh_sport,ts,ip->ip_ttl);
 		}
 	}
 	
@@ -336,10 +388,90 @@ int ParseIP(const unsigned char *packet, struct ip *ip, struct timeval ts) {
 	return 0;
 }
 
-void add_outgoing_time(u_short id, struct timeval ts, u_short seq_num, u_short ttl) {
-	//outgoing_time[ttl-1][outgoing_time_count_per_hop[ttl-1]];
-	//outgoing_time_count_per_hop[ttl-1]++;
+void add_outgoing_time(struct icmphdr* icmp, struct timeval ts,  u_char ttl) {
+	int ind = ttl-1;
+	outgoing_seq_num[ind][outgoing_time_count_per_hop[ind]] = icmp->un.echo.sequence;
+	outgoing_time[ind][outgoing_time_count_per_hop[ind]] = ts;
+//	printf("hello ttl %hu seq %hu ts %s\n",ttl,outgoing_seq_num[ind][outgoing_time_count_per_hop[ind]],timestamp_string(outgoing_time[ind][outgoing_time_count_per_hop[ind]]) );
+
+	outgoing_time_count_per_hop[ind]++;
 	
+}
+
+void add_outgoing_time_by_port(u_short src_port, struct timeval ts,  u_char ttl) {
+	int ind = ttl-1;
+	outgoing_seq_num[ind][outgoing_time_count_per_hop[ind]] = src_port;
+	outgoing_time[ind][outgoing_time_count_per_hop[ind]] = ts;
+	//printf("hello ttl %hu seq %hu ts %s\n",ttl,outgoing_seq_num[ind][outgoing_time_count_per_hop[ind]],timestamp_string(outgoing_time[ind][outgoing_time_count_per_hop[ind]]) );
+	//printf("outgoing port %d\n",src_port);
+	outgoing_time_count_per_hop[ind]++;
+	
+}
+
+void add_incoming_time(u_short seq_num, struct timeval ts) {
+	//printf("add incoming time seq_num %hu\n", seq_num);
+	int indX = -1;
+	int indY = -1;
+	for (int i = 0; i < ip_intr_dst_count+1; i++) {
+		for (int j = 0; j < outgoing_time_count_per_hop[i]; j++) {
+			//printf("saw seq %hu\n",
+			if (seq_num == outgoing_seq_num[i][j]) {
+				indX = i;
+				indY = j;
+				break;
+			}
+		}
+		if (indX > -1) {
+			break;
+		}
+	}
+	if (indY > -1 && indX > -1) {
+		timersub(&ts,&outgoing_time[indX][indY],&rtt_time[indX][indY]);
+	}	
+}
+
+void add_incoming_time_by_port(u_short port, struct timeval ts) {
+	//printf("add incoming time port %hu\n", port);
+	int indX = -1;
+	int indY = -1;
+	for (int i = 0; i < ip_intr_dst_count+1; i++) {
+		for (int j = 0; j < outgoing_time_count_per_hop[i]; j++) {
+			//printf("saw seq %hu\n",
+			if (port == outgoing_seq_num[i][j]) {
+				indX = i;
+				indY = j;
+				break;
+			}
+		}
+		if (indX > -1) {
+			break;
+		}
+	}
+	if (indY > -1 && indX > -1) {
+		//printf("saved time by port\n");
+		timersub(&ts,&outgoing_time[indX][indY],&rtt_time[indX][indY]);
+		//printf("rtt_time %s\n", timestamp_string(rtt_time[0][1]));
+	}	
+}
+
+void avg_rtt() {
+	struct timeval temp_time;
+	for (int i = 0; i < ip_intr_dst_count+1; i++) {
+		timerclear(&temp_time);
+		timerclear(&rtt_std_time[i]);
+		for (int j = 0; j < outgoing_time_count_per_hop[i]; j++) {
+			timeradd(&rtt_avg_time[i], &rtt_time[i][j], &rtt_avg_time[i]);
+			if (j+1 == outgoing_time_count_per_hop[i]  && j != 0) {
+				rtt_avg_time[i].tv_sec /= (float)j;
+				rtt_avg_time[i].tv_usec /= (float)j;
+				for (int k = 0; k < j; k++) {
+					rtt_std_time[i].tv_usec += pow(rtt_time[i][k].tv_usec-rtt_avg_time[i].tv_usec,2);
+				}
+				rtt_std_time[i].tv_sec = 0;
+				rtt_std_time[i].tv_usec = sqrt(rtt_std_time[i].tv_usec/j);
+			}
+		}
+	}
 }
 
 int find_fragment_num_by_id(u_short id) {
