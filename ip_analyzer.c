@@ -15,11 +15,13 @@
 #include <netinet/ip.h>
 #include <netinet/ip_icmp.h>
 #include <netinet/udp.h>
+#include <sys/time.h>
 #include "ip_analyzer.h"
 
 #define MAX_NUM_HOPS 80
 #define MAX_NUM_PROTOCOLS 20
-#define MAX_NUM_FRAGMENTS 20
+#define MAX_NUM_PROBES 5
+#define MAX_NUM_DATAGRAMS MAX_NUM_HOPS*MAX_NUM_PROBES
 
 struct in_addr ip_src;
 struct in_addr ip_ult_dst;
@@ -27,17 +29,23 @@ struct in_addr ip_intr_dst[MAX_NUM_HOPS];
 int ip_intr_dst_count = 0;
 int src_dst_found = 0;  //The number of valid packets
 
+struct timeval outgoing_time[MAX_NUM_HOPS][MAX_NUM_PROBES];
+u_short outgoing_seq_num[MAX_NUM_HOPS][MAX_NUM_PROBES];
+int outgoing_time_count_per_hop[MAX_NUM_HOPS];
+
 u_short first_id = -1;
 u_short udp_port = 0;
 
 u_char protocols_found[MAX_NUM_PROTOCOLS];
 int protocols_found_count = 0;
 
-u_short fragment_first_id[MAX_NUM_FRAGMENTS];
-u_short fragment_udp_port[MAX_NUM_FRAGMENTS];
-int fragments_found_count[MAX_NUM_FRAGMENTS];
-int last_fragment_offset[MAX_NUM_FRAGMENTS];
+u_short fragment_first_id[MAX_NUM_DATAGRAMS];
+u_short fragment_udp_port[MAX_NUM_DATAGRAMS];
+int fragments_found_count[MAX_NUM_DATAGRAMS];
+int last_fragment_offset[MAX_NUM_DATAGRAMS];
 int fragmented_datagram_count = 0;
+
+
 
 /* --------- main() routine ------------
  * three main task will be excuted:
@@ -61,7 +69,7 @@ int main(int argc, char **argv) {
 	}
 	
 	//Set these to -1 so we know they haven't been set yet
-	for (int i = 0; i < MAX_NUM_FRAGMENTS; i++) {
+	for (int i = 0; i < MAX_NUM_DATAGRAMS; i++) {
 		fragment_first_id[i] = -1;
 		fragment_udp_port[i] = -1;
 	}
@@ -161,7 +169,7 @@ int ParsePacket(const unsigned char *packet, struct timeval ts, unsigned int cap
 		return 0;
 	}
 	
-	return ParseIP(packet, ip);
+	return ParseIP(packet, ip, ts);
 	
 }
 
@@ -213,7 +221,7 @@ void too_short(struct timeval ts, const char *truncated_hdr) {
  * 
  *
  */
-int ParseIP(const unsigned char *packet, struct ip *ip) {
+int ParseIP(const unsigned char *packet, struct ip *ip, struct timeval ts) {
 
 	u_short id = ntohs(ip->ip_id); //& 0x0F;	
 	unsigned int IP_header_len = ip->ip_hl * 4;
@@ -231,12 +239,15 @@ int ParseIP(const unsigned char *packet, struct ip *ip) {
 		u_short src_port;
 		packet += sizeof(struct icmphdr); //This will be the packet return from the icmp data
 		struct ip* msg_ip = (struct ip*) packet;
+		unsigned int msg_header_len = msg_ip->ip_hl * 4;
+		packet += msg_header_len;
 		if (msg_ip->ip_p == UDP_P) {
-			unsigned int msg_header_len = msg_ip->ip_hl * 4;
-			packet += msg_header_len;
-			struct udphdr* udp = (struct udphdr*) packet;
+			struct udphdr* msg_udp = (struct udphdr*) packet;
 			//what we want is u_short src_port = udp->uh_sport; (FOR MATCHING THINGS)
-			src_port = udp->uh_sport;	
+			src_port = msg_udp->uh_sport;	
+			
+		}else if (msg_ip->ip_p == ICMP_P) {
+			struct icmphdr* msg_icmp = (struct icmphdr*) packet;
 		}
 		
 		//Packet timed out
@@ -244,11 +255,12 @@ int ParseIP(const unsigned char *packet, struct ip *ip) {
 			 //MORE THAN MAX HOPE ERROR HERE
 			 add_intr_dst(ip->ip_src);
 			 
-		}else if (icmp->type == 8 && ip->ip_ttl == (char)1 && first_id == (u_short)(-1)) { //FIRST ID?
+		}else if (icmp->type == 8 && ip->ip_ttl == (char)1 && first_id == (u_short)(-1)) { //NEW ID
 			//Set source and ult ip addresses
 			ip_src = ip->ip_src;
 			ip_ult_dst = ip->ip_dst;
 			//Record time packet was sent
+			add_outgoing_time(id,ts,ip->ip_ttl);
 			//Set ID of first packet
 			first_id = ntohs(ip->ip_id);			
 			if (mf == 1) { //FRAGMENTS HERE
@@ -322,6 +334,12 @@ int ParseIP(const unsigned char *packet, struct ip *ip) {
 	
 	src_dst_found = 1; //CHANGE THIS
 	return 0;
+}
+
+void add_outgoing_time(u_short id, struct timeval ts, u_short seq_num, u_short ttl) {
+	//outgoing_time[ttl-1][outgoing_time_count_per_hop[ttl-1]];
+	//outgoing_time_count_per_hop[ttl-1]++;
+	
 }
 
 int find_fragment_num_by_id(u_short id) {
